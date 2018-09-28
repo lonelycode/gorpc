@@ -453,39 +453,6 @@ func (ln *customListener) Close() error {
 	return nil
 }
 
-func TestCustomTransport(t *testing.T) {
-	rc, ws := io.Pipe()
-	rs, wc := io.Pipe()
-
-	s := &Server{
-		Listener: newCustomListener("foobar", rs, ws),
-		Handler: func(clientAddr string, request interface{}) interface{} {
-			if clientAddr != "foobar" {
-				t.Fatalf("Unexpected client address: [%s]. Expected [foobar]", clientAddr)
-			}
-			return request
-		},
-	}
-	if err := s.Start(); err != nil {
-		t.Fatalf("Server.Start() failed: [%s]", err)
-	}
-	defer s.Stop()
-
-	c := &Client{
-		Conns: 1,
-		Dial: func(addr string) (conn io.ReadWriteCloser, err error) {
-			return &customConn{
-				r: rc,
-				w: wc,
-			}, nil
-		},
-	}
-	c.Start()
-	defer c.Stop()
-
-	testIntClient(t, c)
-}
-
 func testIntClient(t *testing.T, c *Client) {
 	for i := 0; i < 10; i++ {
 		resp, err := c.Call(i)
@@ -530,32 +497,6 @@ func sillyEncrypt(p []byte) {
 
 func sillyDecrypt(p []byte) {
 	sillyEncrypt(p)
-}
-
-func newOnConnectFunc(t *testing.T) OnConnectFunc {
-	return func(remoteAddr string, rwc io.ReadWriteCloser) (io.ReadWriteCloser, error) {
-		return &onConnectRwcWrapper{
-			rwc: rwc,
-			t:   t,
-		}, nil
-	}
-}
-
-func TestOnConnect(t *testing.T) {
-	addr := "./test-onconnect.sock"
-	s := NewUnixServer(addr, echoHandler)
-	s.OnConnect = newOnConnectFunc(t)
-	if err := s.Start(); err != nil {
-		t.Fatalf("Server.Start() failed: [%s]", err)
-	}
-	defer s.Stop()
-
-	c := NewUnixClient(addr)
-	c.OnConnect = newOnConnectFunc(t)
-	c.Start()
-	defer c.Stop()
-
-	testIntClient(t, c)
 }
 
 func TestConcurrency(t *testing.T) {
