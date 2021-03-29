@@ -12,18 +12,19 @@ import (
 // since the original stats can be updated by concurrently running goroutines.
 func (cs *ConnStats) Snapshot() *ConnStats {
 	return &ConnStats{
-		RPCCalls:     atomic.LoadUint64(&cs.RPCCalls),
-		RPCTime:      atomic.LoadUint64(&cs.RPCTime),
-		BytesWritten: atomic.LoadUint64(&cs.BytesWritten),
-		BytesRead:    atomic.LoadUint64(&cs.BytesRead),
-		ReadCalls:    atomic.LoadUint64(&cs.ReadCalls),
-		ReadErrors:   atomic.LoadUint64(&cs.ReadErrors),
-		WriteCalls:   atomic.LoadUint64(&cs.WriteCalls),
-		WriteErrors:  atomic.LoadUint64(&cs.WriteErrors),
-		DialCalls:    atomic.LoadUint64(&cs.DialCalls),
-		DialErrors:   atomic.LoadUint64(&cs.DialErrors),
-		AcceptCalls:  atomic.LoadUint64(&cs.AcceptCalls),
-		AcceptErrors: atomic.LoadUint64(&cs.AcceptErrors),
+		RPCCalls:      atomic.LoadUint64(&cs.RPCCalls),
+		RPCTime:       atomic.LoadUint64(&cs.RPCTime),
+		BytesWritten:  atomic.LoadUint64(&cs.BytesWritten),
+		BytesRead:     atomic.LoadUint64(&cs.BytesRead),
+		ReadCalls:     atomic.LoadUint64(&cs.ReadCalls),
+		ReadErrors:    atomic.LoadUint64(&cs.ReadErrors),
+		WriteCalls:    atomic.LoadUint64(&cs.WriteCalls),
+		WriteErrors:   atomic.LoadUint64(&cs.WriteErrors),
+		DialCalls:     atomic.LoadUint64(&cs.DialCalls),
+		DialErrors:    atomic.LoadUint64(&cs.DialErrors),
+		AcceptCalls:   atomic.LoadUint64(&cs.AcceptCalls),
+		AcceptErrors:  atomic.LoadUint64(&cs.AcceptErrors),
+		FuncCallStats: cs.FuncCallStats,
 	}
 }
 
@@ -41,6 +42,7 @@ func (cs *ConnStats) Reset() {
 	atomic.StoreUint64(&cs.DialErrors, 0)
 	atomic.StoreUint64(&cs.AcceptCalls, 0)
 	atomic.StoreUint64(&cs.AcceptErrors, 0)
+	cs.FuncCallStats = make(map[string]uint64)
 }
 
 func (cs *ConnStats) incRPCCalls() {
@@ -89,4 +91,11 @@ func (cs *ConnStats) incAcceptCalls() {
 
 func (cs *ConnStats) incAcceptErrors() {
 	atomic.AddUint64(&cs.AcceptErrors, 1)
+}
+
+func (cs *ConnStats) incFuncCalls(fn string) {
+	if cs.FuncCallStats == nil {
+		cs.FuncCallStats = make(map[string]uint64)
+	}
+	cs.FuncCallStats[fn]++
 }

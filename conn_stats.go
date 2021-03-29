@@ -52,6 +52,8 @@ type ConnStats struct {
 	// The number of Accept() errors.
 	AcceptErrors uint64
 
+	FuncCallStats map[string]uint64
+
 	// lock is for 386 builds. See https://github.com/valyala/gorpc/issues/5 .
 	lock sync.Mutex
 }

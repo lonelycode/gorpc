@@ -354,6 +354,13 @@ func serveRequest(s *Server, responsesChan chan<- *serverMessage, stopChan <-cha
 	response, err := callHandlerWithRecover(s.LogError, s.Handler, clientAddr, s.Addr, request)
 	s.Stats.incRPCTime(uint64(time.Since(t).Seconds() * 1000))
 
+	req, ok := request.(*dispatcherRequest)
+	if !ok {
+		logPanic("gorpc.Dispatcher: unsupported request type received from the client: %T", request)
+	} else {
+		s.Stats.incFuncCalls(req.Name)
+	}
+
 	if !skipResponse {
 		m.Response = response
 		m.Error = err

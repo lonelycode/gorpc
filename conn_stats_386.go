@@ -37,10 +37,11 @@ func (cs *ConnStats) Reset() {
 	cs.DialErrors = 0
 	cs.AcceptCalls = 0
 	cs.AcceptErrors = 0
+	cs.FuncCallStats = make(map[string]uint64)
 	cs.lock.Unlock()
 }
 
-func (cs *ConnStats) incRPCCalls() {
+func (cs *ConnStats) incRPCCalls(fn string) {
 	cs.lock.Lock()
 	cs.RPCCalls++
 	cs.lock.Unlock()
@@ -110,4 +111,11 @@ func (cs *ConnStats) incAcceptErrors() {
 	cs.lock.Lock()
 	cs.AcceptErrors++
 	cs.lock.Unlock()
+}
+
+func (cs *ConnStats) incFuncCalls(fn string) {
+	if cs.FuncCallStats == nil {
+		cs.FuncCallStats = make(map[string]uint64)
+	}
+	cs.FuncCallStats[fn]++
 }
