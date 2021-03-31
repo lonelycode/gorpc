@@ -41,7 +41,7 @@ func (cs *ConnStats) Reset() {
 	cs.lock.Unlock()
 }
 
-func (cs *ConnStats) incRPCCalls(fn string) {
+func (cs *ConnStats) incRPCCalls() {
 	cs.lock.Lock()
 	cs.RPCCalls++
 	cs.lock.Unlock()
