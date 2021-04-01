@@ -94,8 +94,10 @@ func (cs *ConnStats) incAcceptErrors() {
 }
 
 func (cs *ConnStats) incFuncCalls(fn string) {
+	cs.lock.Lock()
 	if cs.FuncCallStats == nil {
 		cs.FuncCallStats = make(map[string]uint64)
 	}
 	cs.FuncCallStats[fn]++
+	cs.lock.Unlock()
 }
