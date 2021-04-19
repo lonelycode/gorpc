@@ -11,6 +11,13 @@ import (
 // Use stats returned from ConnStats.Snapshot() on live Client and / or Server,
 // since the original stats can be updated by concurrently running goroutines.
 func (cs *ConnStats) Snapshot() *ConnStats {
+	cs.lock.Lock()
+	funcCallStatsCopy := make(map[string]uint64)
+	for k, v := range cs.FuncCallStats {
+		funcCallStatsCopy[k] = v
+	}
+	cs.lock.Unlock()
+
 	return &ConnStats{
 		RPCCalls:      atomic.LoadUint64(&cs.RPCCalls),
 		RPCTime:       atomic.LoadUint64(&cs.RPCTime),
@@ -24,7 +31,7 @@ func (cs *ConnStats) Snapshot() *ConnStats {
 		DialErrors:    atomic.LoadUint64(&cs.DialErrors),
 		AcceptCalls:   atomic.LoadUint64(&cs.AcceptCalls),
 		AcceptErrors:  atomic.LoadUint64(&cs.AcceptErrors),
-		FuncCallStats: cs.FuncCallStats,
+		FuncCallStats: funcCallStatsCopy,
 	}
 }
 
@@ -42,7 +49,9 @@ func (cs *ConnStats) Reset() {
 	atomic.StoreUint64(&cs.DialErrors, 0)
 	atomic.StoreUint64(&cs.AcceptCalls, 0)
 	atomic.StoreUint64(&cs.AcceptErrors, 0)
+	cs.lock.Lock()
 	cs.FuncCallStats = make(map[string]uint64)
+	cs.lock.Unlock()
 }
 
 func (cs *ConnStats) incRPCCalls() {
