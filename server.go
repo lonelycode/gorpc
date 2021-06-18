@@ -6,6 +6,7 @@ import (
 	"net"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -183,20 +184,25 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 
 	var conn net.Conn
 	var err error
+	var stopping atomic.Value
+
 
 	for {
 		acceptChan := make(chan struct{})
 		go func() {
 			if conn, err = s.Listener.Accept(); err != nil {
-				s.LogError("gorpc.Server: [%s]. Cannot accept new connection: [%s]", s.Addr, err)
-				time.Sleep(time.Second)
+				if stopping.Load() == nil {
+					s.LogError("gorpc.Server: [%s]. Cannot accept new connection: [%s]", s.Addr, err)
+				}
 			}
 			close(acceptChan)
 		}()
 
 		select {
 		case <-s.serverStopChan:
+			stopping.Store(true)
 			s.Listener.Close()
+			<-acceptChan
 			return
 		case <-acceptChan:
 			s.Stats.incAcceptCalls()
@@ -204,6 +210,11 @@ func serverHandler(s *Server, workersCh chan struct{}) {
 
 		if err != nil {
 			s.Stats.incAcceptErrors()
+			select {
+			case <-s.serverStopChan:
+				return
+			case <-time.After(time.Second):
+			}
 			continue
 		}
 
@@ -233,11 +244,15 @@ func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
 	}
 
 	var enabledCompression bool
+	var stopping atomic.Value
 	zChan := make(chan bool, 1)
+
 	go func() {
 		var buf [1]byte
 		if _, err = conn.Read(buf[:]); err != nil {
-			s.LogError("gorpc.Server: [%s]->[%s]. Error when reading handshake from client: [%s]", clientAddr, s.Addr, err)
+			if stopping.Load() == nil {
+				s.LogError("gorpc.Server: [%s]->[%s]. Error when reading handshake from client: [%s]", clientAddr, s.Addr, err)
+			}
 		}
 		zChan <- (buf[0] != 0)
 	}()
@@ -248,6 +263,7 @@ func serverHandleConnection(s *Server, conn net.Conn, workersCh chan struct{}) {
 			return
 		}
 	case <-s.serverStopChan:
+		stopping.Store(true)
 		conn.Close()
 		return
 	case <-time.After(10 * time.Second):
@@ -296,6 +312,19 @@ var serverMessagePool = &sync.Pool{
 	},
 }
 
+func isClientDisconnect(err error) bool {
+	return err == io.ErrUnexpectedEOF || err == io.EOF
+}
+
+func isServerStop(stopChan <-chan struct{}) bool {
+	select {
+	case <-stopChan:
+		return true
+	default:
+		return false
+	}
+}
+
 func serverReader(s *Server, r io.Reader, clientAddr string, responsesChan chan<- *serverMessage,
 	stopChan <-chan struct{}, done chan<- struct{}, enabledCompression bool, workersCh chan struct{}) {
 
@@ -312,7 +341,9 @@ func serverReader(s *Server, r io.Reader, clientAddr string, responsesChan chan<
 	var wr wireRequest
 	for {
 		if err := d.Decode(&wr); err != nil {
-			s.LogError("gorpc.Server: [%s]->[%s]. Cannot decode request: [%s]", clientAddr, s.Addr, err)
+			if !isClientDisconnect(err) && !isServerStop(stopChan) {
+				s.LogError("gorpc.Server: [%s]->[%s]. Cannot decode request: [%s]", clientAddr, s.Addr, err)
+			}
 			return
 		}
 
@@ -408,13 +439,18 @@ func serverWriter(s *Server, w io.Writer, clientAddr string, responsesChan <-cha
 		select {
 		case m = <-responsesChan:
 		default:
+			// Give the last chance for ready goroutines filling responsesChan :)
+			runtime.Gosched()
+
 			select {
 			case <-stopChan:
 				return
 			case m = <-responsesChan:
 			case <-flushChan:
 				if err := e.Flush(); err != nil {
-					s.LogError("gorpc.Server: [%s]->[%s]: Cannot flush responses to underlying stream: [%s]", clientAddr, s.Addr, err)
+					if !isServerStop(stopChan) {
+						s.LogError("gorpc.Server: [%s]->[%s]: Cannot flush responses to underlying stream: [%s]", clientAddr, s.Addr, err)
+					}
 					return
 				}
 				flushChan = nil
